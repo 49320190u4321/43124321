@@ -1,0 +1,110 @@
+/*
+ * Charlatano: Free and open-source (FOSS) cheat for CS:GO/CS:CO
+ * Copyright (C) 2017 - Thomas G. P. Nappo, Jonathan Beaudoin
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package com.charlatano.scripts
+
+import com.charlatano.game.me
+import com.charlatano.game.forEntities
+import com.charlatano.game.CSGO.clientDLL
+import com.charlatano.game.CSGO.engineDLL
+import com.charlatano.game.CSGO.csgoEXE
+import com.charlatano.game.entity.*
+import com.charlatano.utils.extensions.uint
+import com.charlatano.game.offsets.EngineOffsets.dwClientState
+import com.charlatano.game.offsets.ClientOffsets.dwLocalPlayer
+import com.charlatano.game.netvars.NetVarOffsets.hMyWeapons
+import com.charlatano.game.netvars.NetVarOffsets.iItemDefinitionIndex
+import com.charlatano.game.netvars.NetVarOffsets.nFallbackPaintKit
+import com.charlatano.game.netvars.NetVarOffsets.iEntityQuality
+import com.charlatano.game.netvars.NetVarOffsets.nFallbackStatTrak
+import com.charlatano.game.netvars.NetVarOffsets.flFallbackWear
+import com.charlatano.game.offsets.ClientOffsets.dwEntityList
+import com.charlatano.game.netvars.NetVarOffsets.iItemIDHigh
+import com.charlatano.game.netvars.NetVarOffsets.iItemIDLow
+import com.charlatano.game.netvars.NetVarOffsets.OriginalOwnerXuidHigh
+import com.charlatano.game.netvars.NetVarOffsets.OriginalOwnerXuidLow
+import com.charlatano.game.netvars.NetVarOffsets.nFallbackSeed
+import com.charlatano.game.netvars.NetVarOffsets.hOwnerEntity
+import com.charlatano.game.netvars.NetVarOffsets.iAccountID
+import com.charlatano.game.netvars.NetVarOffsets.szCustomName
+import com.charlatano.game.offsets.EngineOffsets
+import org.jire.arrowhead.keyPressed
+import com.charlatano.game.Weapons
+import com.charlatano.utils.every
+import com.charlatano.settings.*
+import kotlin.concurrent.thread
+
+
+object SkinChanger {
+	val engine = engineDLL.uint(dwClientState)
+	var weaponAddress = 0
+	var s: String = "";
+
+	fun skinwepindex() = thread {
+		while (true) {
+			var weapons: Int = 0;
+			var updated: Boolean = false;
+			for (index in 1..64) {
+				var weaponIndex = csgoEXE.uint(me + hMyWeapons + ((index - 1) * 0x4)) and 0xFFF
+				val weaponEntity = clientDLL.uint(dwEntityList + (weaponIndex - 1) * 0x10)
+				val weaponID = csgoEXE.int(weaponEntity + iItemDefinitionIndex)
+				val weapon = Weapons[weaponID] 
+				val myAccountId = csgoEXE.int(weaponEntity + OriginalOwnerXuidLow)
+				var skin = SKINS.get(weapon)
+				if (skin != null) {
+					applySkin(weaponEntity, myAccountId, skin.skinID, skin.skinSeed, skin.statTrak, skin.quality, skin.wear, skin.customName)
+				} 
+				if(!s.contains("$weaponEntity")){
+					updated = true
+				}
+				s+= "$weaponEntity "
+			}	
+			if (keyPressed(0x12)) {
+				do {
+					Thread.sleep(25)
+				} while (keyPressed(0x12))
+				/*val enginePointer = engineDLL.uint(dwClientState)
+				csgoEXE[enginePointer + 0x174] = -1*/
+				s = ""
+			}
+			if(updated){
+				val enginePointer = engineDLL.uint(dwClientState)
+				csgoEXE[enginePointer + 0x174] = -1
+			}
+			Thread.yield()
+		}
+	}
+
+}
+
+private fun applySkin(weaponEntity: Long, me: Int, skinID: Int, skinSeed: Int, statTrak: Int, quality: Int, wear: Float, name: String) {
+    csgoEXE[weaponEntity + iItemIDHigh] = 1
+    csgoEXE[weaponEntity + iAccountID] = me
+    csgoEXE[weaponEntity + nFallbackPaintKit] = skinID
+    csgoEXE[weaponEntity + nFallbackSeed] = skinSeed
+    csgoEXE[weaponEntity + nFallbackStatTrak] = statTrak
+    csgoEXE[weaponEntity + iEntityQuality] = quality
+    csgoEXE[weaponEntity + flFallbackWear] = wear
+	if(!name.isBlank()){
+		val chars = name.toCharArray();
+		val length = Math.min(32, chars.size) - 1; 
+		for(c in 0..length){ 
+			csgoEXE[weaponEntity + szCustomName + 0x1 * c] = chars[c]
+		} 
+	}
+}
